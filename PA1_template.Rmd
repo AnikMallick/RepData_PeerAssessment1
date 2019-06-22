@@ -1,0 +1,306 @@
+---
+title: "Reproducible Research: Peer Assessment 1"
+author: "Anik"
+date: "6/18/2019"
+output: 
+  html_document:
+    keep_md: true
+---
+```{r,warning=FALSE,message=FALSE}
+#loading libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
+
+## Loading and preprocessing the data
+Reading the data given as a part of assignment.  
+- Dataset: [Activity monitoring dat](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip) [52K]
+```{r}
+df <- read.csv("activity.csv")
+
+head(df)
+```
+
+We can see that there are NA values in the dataset. Lets take a look which columns have NA values and what is the total no of NA's present in the dataset.
+```{r}
+sapply(df, function(x) sum(is.na(x)))
+
+```
+So there are 2304 NA values in 'steps' column only. We will take a look at those more leter.
+
+Before we get started with the assignment, lets backup the data. 
+```{r}
+backup_df <- df
+```
+
+
+## What is mean total number of steps taken per day? 
+
+#### 'Calculate the total number of steps taken per day'  
+  
+To calculate the total no of steps taken perday we will group the data by 'date' and perform a 'sum' operation on 'steps'
+```{r}
+sub_df1 <- df %>% group_by(date) %>% 
+    summarise(total_steps = sum(steps,na.rm = T),
+              mean_by_day = mean(steps,na.rm = T),
+              median_by_day = median(steps, na.rm = T))
+head(sub_df1)
+```
+**'sub_df1'** contains the total no of steps per day.  
+  
+We can see that NA is introdused in the dataset. Lets take look at the NA values. Also it is interesting to see that all the values in 'median_by_day' column is zero. Lets take a closer look at that too.
+
+```{r}
+sapply(sub_df1, function(x) sum(is.na(x)))
+```
+There are 8 NA values in both 'mean_by_day' and 'median_by_day'. Lets check if both colums have NA values for those 8 values.
+```{r}
+idx <- intersect(which(is.na(sub_df1$mean_by_day)),
+                 which(is.na(sub_df1$median_by_day)))
+idx
+```
+So for the 8 na value rows both 'mean_by_day' and 'median_by_day' have NA.  
+Lets take a look at the 'steps' values present in 'df' for those dates with NA.  
+```{r}
+dates <- sub_df1[idx,"date"]
+df %>% filter(date %in% as.character(dates$date)) %>% 
+    select(steps,date) %>% group_by(date) %>% summarise(uniq = unique(steps))
+```
+Suprising that code was executed, if 'unique' returned a vector of size 2 or more it would throw an error an error *'Error: Column `uniq` must be length 1 (a summary value), not 3'*.  
+It seems that the NA values in 'mean_by_day' and 'median_by_day' are the result of having on 'steps' values for those perticular dates.  
+
+Now lets look at 'median_by_day' col of 'sub_df1'.
+```{r}
+table(sub_df1$median_by_day)
+```
+We have in total on 61 days in the dataset but as for 8 days there is no values we can only see 53 days, for all those those days the median in 0. Thats interesting. Lets take a look 'df' for more info.
+```{r}
+df %>% filter(!(date %in% as.character(dates$date))) %>% 
+    group_by(date) %>% 
+    summarise(counts = n(),
+              n_zore_steps = sum(steps == 0),
+              fraction_zero_steps = n_zore_steps/counts) -> temp1
+temp1[temp1$fraction_zero_steps < 0.65,]
+```
+We can see that for all the date except the 'dates' where there is no 'steps' values, more than 50% values are 0 for each day. That is why 'median_by_day' in 'sub_df1' is all 0.  
+
+#### 'Make a histogram of the total number of steps taken each day'  
+Lets construct a histogram of the total steps taken.  
+```{r}
+hist(sub_df1$total_steps,
+     main='A histogram of the total number of steps taken each day',
+     xlab = 'Total number of steps',breaks = 10,sub="Figure 1")
+rug(sub_df1$total_steps)
+grid(NA,NULL,lwd=2)
+abline(v=mean(sub_df1$total_steps),lwd = 2,col =4)
+abline(v=median(sub_df1$total_steps),lty=2,lwd = 2,col =2)
+legend("topright",col = c(4,2),lty=c(1,2),
+       legend = c("mean of total steps","median of total steps"))
+```
+  
+#### 'Calculate and report the mean and median of the total number of steps taken per day'  
+**'sub_df1'** coulmn 'mean_by_day' and 'median_by_day' has the mean and the median steps for each day.  
+```{r,echo=FALSE}
+mean_r <- mean(sub_df1$total_steps)
+median_r <- median(sub_df1$total_steps)
+```
+Mean of total steps : `r mean_r`  
+Median of total steps " `r median_r`  
+
+## What is the average daily activity pattern?  
+
+#### 'Make a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)'
+
+Lets group the data by interval and summarise:
+```{r}
+sub_df2 <- df %>% group_by(interval) %>% 
+    summarise(total_steps = sum(steps,na.rm = T),
+              mean_by_interval = mean(steps,na.rm = T),
+              median_by_interval = median(steps, na.rm = T))
+head(sub_df2)
+```
+  
+Lets check for NA values and check if 'median_by_interval' is acting the same way as 'median_by_day' from 'sub_df1'.  
+```{r}
+sapply(sub_df2, function(x) sum(is.na(x)))
+```
+  
+So no NA valus thats a good sign!!  
+'median_by_interval'
+```{r}
+table(sub_df2$median_by_interval)
+```
+  
+We have several values here.  
+So lets move forward with the plot.
+```{r}
+par(mar = c(4,4,3,1))
+with(sub_df2,plot(interval,median_by_interval,type="l",
+                  main = "Time series plot of the 5-minute interval and\nthe average number of steps taken, averaged across all days",
+                  xlab = "5-minute interval",
+                  ylab = "Average number of steps taken",sub="Figure 2"))
+grid(NA,NULL,lwd=2)
+
+```
+  
+#### 'Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps'  
+
+```{r,results='hide'}
+interval_r <- sub_df2[which.max(sub_df2$mean_by_interval),'interval']
+```
+  
+5-minute interval: **`r interval_r`** has the maximum number of steps on average across all the days in the dataset.  
+
+## Imputing missing values  
+
+#### 'Calculate and report the total number of missing values in the dataset'  
+
+Total no of NA's in dataset:  
+```{r}
+sum(is.na(df))
+```
+  
+By colums:
+```{r}
+sapply(df, function(x) sum(is.na(x)))
+```
+  
+#### 'Devise a strategy for filling in all of the missing values in the dataset.'  
+From "Figure 1" and "Figure 2" it is clear that 'steps' are highly depended on both the 'date' and 'interval'. So relativly simple way to impute NA values in 'steps' would be to use both 'date' and 'interval'.  
+NA values should be imputed with the mean of "sub_df1 cloumn mean_by_day" and "sub_df2 cloumn mean_by_interval".  
+```{r}
+idx <- which(is.na(df$steps))
+unique(df[idx,]$date)
+```
+```{r}
+all(as.character(unique(df[idx,]$date)) %in% as.character(dates$date))
+```
+  
+But it seems like NA values in steps are for only those dates we looked at before.  
+These dates have no 'steps' values for the whole day so "sub_df1 cloumn mean_by_day" is also NA.  
+So lets check if there is a pattern in weekdays of the date.  
+```{r}
+wend <- c("Sunday","Saturday")
+df_new <- df %>% mutate(weekday = weekdays(ymd(date)),
+                        day = weekday,
+                        day = replace(day,weekday %in%wend,"weekend"),
+                        day = replace(day,!(weekday %in%wend),"weekday")) %>% 
+    select(everything(),-weekday) %>% as_tibble
+df_new %>% group_by(day) %>% summarise(total_steps = sum(steps,na.rm = T),
+              mean_by_day = mean(steps,na.rm = T),
+              median_by_day = median(steps, na.rm = T)) -> sub_df3
+sub_df3
+
+```
+  
+So can see that mean steps differs from weekday and weekend. So now lets use the mean of "sub_df3 cloumn mean_by_day" and "sub_df2 cloumn mean_by_interval".
+```{r}
+sub_df4 <- df_new %>% group_by(day,interval) %>% 
+    summarise(mean_by_day = mean(steps,na.rm = T)) %>% 
+    mutate(interval.day = paste(interval,day,sep="."))%>% as_tibble
+df_new <- df_new %>% mutate(interval.day = paste(interval,day,sep="."))
+df_new <- merge(df_new,sub_df4[,c('interval.day','mean_by_day')],
+                by.x ="interval.day",by.y="interval.day")%>% as_tibble
+idx <- which(is.na(df_new$steps))
+for(id in idx){
+    df_new[id,"steps"] <- df_new[id,'mean_by_day']
+}
+
+```
+  
+So we have imputed the values with mean steps by weekend and interval.  
+
+#### 'Create a new dataset that is equal to the original dataset but with the missing data filled in.'  
+'df_new' is the imputed dataset.  
+
+#### 'Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?'  
+
+Lets create the dataset with total num of steps taken each day.  
+```{r}
+sub_df5 <- df_new %>% group_by(date) %>% 
+    summarise(total_steps = sum(steps,na.rm = T),
+              mean_by_day = mean(steps,na.rm = T),
+              median_by_day = median(steps, na.rm = T))
+head(sub_df5)
+```
+  
+Lets create the histogram:  
+```{r,fig.height=6,fig.width=12}
+mean_ts <- round(mean(sub_df1$total_steps),2)
+median_ts <- round(median(sub_df1$total_steps),2)
+text_m1 <- paste(c('mean:',as.character(mean_ts),
+                  '| median:',as.character(median_ts)),collapse =" ")
+
+mean_ts_imp <- round(mean(sub_df5$total_steps),2)
+median_ts_imp <- round(median(sub_df5$total_steps),2)
+text_m2 <- paste(c('mean:',as.character(mean_ts_imp),
+                  '| median:',as.character(median_ts_imp)),collapse=" ")
+
+par(mfrow = c(2,1),mar=c(4,4,3,1))
+hist(sub_df1$total_steps,
+     main='A histogram of the total number of steps taken each day',
+     xlab = 'Total number of steps',breaks = 10)
+rug(sub_df1$total_steps)
+grid(NA,NULL,lwd=2)
+abline(v=mean(sub_df1$total_steps),lwd = 2,col =4)
+abline(v=median(sub_df1$total_steps),lty=2,lwd = 2,col =2)
+legend("topright",col = c(4,2),lty=c(1,2),
+       legend = c("mean of total steps","median of total steps"))
+text(3000,14,text_m1)
+
+hist(sub_df5$total_steps,
+     main='A histogram of the total number of steps taken each day after imputation',
+     xlab = 'Total number of steps',breaks = 10)
+rug(sub_df5$total_steps)
+grid(NA,NULL,lwd=2)
+abline(v=mean(sub_df5$total_steps),lwd = 2,col =4)
+abline(v=median(sub_df5$total_steps),lty=2,lwd = 2,col =2)
+legend("topright",col = c(4,2),lty=c(1,2),
+       legend = c("mean of total steps","median of total steps"))
+text(3000,14,text_m2)
+
+```
+  
+We see that mean: `r mean_ts` and median `r median_ts` have changed to mean: `r mean_ts_imp` and median `r median_ts_imp`.  
+
+## Are there differences in activity patterns between weekdays and weekends?  
+
+#### 'Create a new factor variable in the dataset with two levels – “weekday” and “weekend” indicating whether a given date is a weekday or weekend day.'  
+'df_new' is the dataset with colum 'day' witht the levels – “weekday” and “weekend”.  
+
+#### 'Make a panel plot containing a time series plot of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).'  
+
+lets group the dataset by 'interval' for the above assignment.  
+```{r}
+sub_df6 <- df_new %>% group_by(day,interval) %>% summarise(mean_step = mean(steps))
+sub_df6
+```
+  
+Lets create the panal plot:
+```{r}
+sub_df7 <- df_new %>% group_by(day) %>% 
+    summarise(mean_by_day = mean(steps,na.rm = T))
+ggplot(sub_df6,aes(interval,mean_step,color=day))+
+    geom_line()+
+    facet_grid(day~.)+
+    geom_hline(data=sub_df7[sub_df7$day=="weekday",],
+               aes(yintercept=mean_by_day),lty=2)+
+    geom_text(data=sub_df7[sub_df7$day=="weekday",],
+              aes(150,mean_by_day,
+                  label = paste("mean:",as.character(round(mean_by_day,2))),
+                  vjust = -1))+
+    geom_hline(data=sub_df7[sub_df7$day=="weekend",],
+               aes(yintercept=mean_by_day),lty=2)+
+    geom_text(data=sub_df7[sub_df7$day=="weekend",],
+              aes(150,mean_by_day,
+                  label = paste("mean:",as.character(round(mean_by_day,2))),
+                  vjust = -1))+
+    labs(x="5-minute interval",y="Average number of steps taken")+
+    labs(title = "Time series plot of the 5-minute interval and the average number of steps taken")+
+    theme(legend.position = "none")
+
+```
+
+
+# END
